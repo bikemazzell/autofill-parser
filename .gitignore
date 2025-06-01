@@ -1,0 +1,30 @@
+# Rust build artifacts
+/target/
+
+# Generated binary in project root
+/autofill_parser
+# If the project name changes, update the line above or use a more generic pattern
+# like /* but that might be too broad if other executables are intended to be versioned.
+
+# Log files
+*.log
+
+# Editor-specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific files
+.DS_Store
+._*
+Thumbs.db
+
+# Miscellaneous
+*.bak
+*.swp
+*~
+
+/test_input
+/test_output
+/target
