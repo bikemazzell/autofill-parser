@@ -1,6 +1,6 @@
 [package]
 name = "autofill_parser"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2021"
 
 [dependencies]
@@ -10,3 +10,4 @@ serde_json = "1.0"
 glob = "0.3"
 lazy_static = "1.4" # Or once_cell, lazy_static is fine for this.
 clap = { version = "4.0", features = ["derive"] }
+sysinfo = "0.35.2"

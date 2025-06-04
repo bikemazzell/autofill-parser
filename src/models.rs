@@ -13,4 +13,10 @@ pub struct UserOutput {
     pub emails: Vec<String>,
     #[serde(flatten)] // Flattens other key-value pairs into the main JSON object
     pub other_fields: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AppConfig {
+    pub memory_usage_percent: usize,
+    pub temp_directory: String,
 } 

@@ -1,5 +1,5 @@
 use crate::models::{RawRecord, UserOutput};
-use crate::constants::EMAIL_REGEX; // Import the regex
+ // Import the regex
 // HashMap import might have been removed by cargo fix, ensure it's here for tests.
 
 /// Chooses a primary identifier for a user record.
@@ -9,26 +9,40 @@ use crate::constants::EMAIL_REGEX; // Import the regex
 /// 3. Value of "username" key (trimmed, lowercased).
 /// 4. Value of "login" key (trimmed, lowercased).
 pub fn choose_identifier(record: &RawRecord, emails: &[String]) -> Option<String> {
-    if !emails.is_empty() {
-        return Some(emails[0].clone());
+    // 1. Prefer the first valid email found anywhere in the record
+    if let Some(email) = emails.first() {
+        return Some(email.clone());
     }
 
-    // Check if the "identifier" key contains a valid email
-    if let Some(id_value) = record.get("identifier") {
-        let trimmed_id_value = id_value.trim();
-        if EMAIL_REGEX.is_match(trimmed_id_value) {
-            return Some(trimmed_id_value.to_lowercase().to_string());
+    // 2. Fallback: try "identifier" field if present and non-empty
+    if let Some(id_val) = record.get("identifier") {
+        let trimmed = id_val.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
         }
     }
 
-    for key in ["username", "login"].iter() {
-        if let Some(value) = record.get(*key) {
-            let trimmed_value = value.trim();
-            if !trimmed_value.is_empty() { 
-                 return Some(trimmed_value.to_lowercase().to_string());
+    // 3. Fallback: try other common fields (e.g., "login-username", "user_login", "UserName", "email")
+    for key in [
+        "login-username", "user_login", "UserName", "email", "username", "login"
+    ] {
+        if let Some(val) = record.get(key) {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
             }
         }
     }
+
+    // 4. Fallback: try any non-empty value
+    for val in record.values() {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    // 5. Nothing found
     None
 }
 
@@ -235,5 +249,69 @@ mod tests {
         assert_eq!(base.identifier, "base_id@example.com".to_string());
         assert_eq!(base.emails, vec!["base_id@example.com".to_string()]);
         assert_eq!(base.other_fields, expected_fields);
+    }
+
+    #[test]
+    fn test_choose_identifier_login_username_email_fields() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("login-username".to_string(), "juanpablovillabonal@gmail.com".to_string());
+        record.insert("login-username".to_string(), "XxJuanCocoteroxX".to_string());
+        let emails = vec!["juanpablovillabonal@gmail.com".to_string()];
+        assert_eq!(choose_identifier(&record, &emails), Some("juanpablovillabonal@gmail.com".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_multiple_emails_and_non_emails() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("email".to_string(), "100081118282110@otpku.com".to_string());
+        record.insert("primary_first_name".to_string(), "Louisa".to_string());
+        record.insert("primary_last_name".to_string(), "Khovanski".to_string());
+        let emails = vec!["100081118282110@otpku.com".to_string(), "100094306124698@otpku.com".to_string()];
+        assert_eq!(choose_identifier(&record, &emails), Some("100081118282110@otpku.com".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_identifier_and_email_fields() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("identifier".to_string(), "aswanth1032007".to_string());
+        record.insert("email".to_string(), "kannanalavil@gmail.com".to_string());
+        record.insert("email2".to_string(), "aswanthkrishna103@gmail.com".to_string());
+        let emails = vec!["kannanalavil@gmail.com".to_string(), "aswanthkrishna103@gmail.com".to_string(), "aswanth1032007@gmail.com".to_string()];
+        assert_eq!(choose_identifier(&record, &emails), Some("kannanalavil@gmail.com".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_colon_key_email() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert(":r1:".to_string(), "karenbasta@microsoft.com".to_string());
+        let emails = vec!["karenbasta@microsoft.com".to_string()];
+        assert_eq!(choose_identifier(&record, &emails), Some("karenbasta@microsoft.com".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_multiple_identifier_fields_with_email() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("identifier".to_string(), "A.espinozatelco".to_string());
+        record.insert("identifier2".to_string(), "bastiasignacio14@gmail.com".to_string());
+        let emails = vec!["bastiasignacio14@gmail.com".to_string()];
+        assert_eq!(choose_identifier(&record, &emails), Some("bastiasignacio14@gmail.com".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_identifier_and_email_with_phone() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("identifier".to_string(), "085260603071".to_string());
+        record.insert("email".to_string(), "kaisar.group@yahoo.com".to_string());
+        let emails = vec!["kaisar.group@yahoo.com".to_string()];
+        assert_eq!(choose_identifier(&record, &emails), Some("kaisar.group@yahoo.com".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_identifier_multiple_emails() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("identifier".to_string(), "niral.shah.1656@gmail.com".to_string());
+        record.insert("identifier2".to_string(), "shreyac.office0898".to_string());
+        let emails = vec!["niral.shah.1656@gmail.com".to_string()];
+        assert_eq!(choose_identifier(&record, &emails), Some("niral.shah.1656@gmail.com".to_string()));
     }
 } 
