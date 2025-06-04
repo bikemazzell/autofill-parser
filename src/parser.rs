@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 /// If a key appears multiple times in the line, the *last* value encountered will be stored.
 /// If the input line is empty or contains only whitespace, an empty RawRecord is returned.
 pub fn parse_line(line: &str) -> RawRecord {
-    if line.trim().is_empty() { // Check if the line is empty or all whitespace
+    if line.trim().is_empty() {
         return HashMap::new();
     }
     let mut record: RawRecord = HashMap::new();
@@ -17,7 +17,6 @@ pub fn parse_line(line: &str) -> RawRecord {
         let mut parts = pair_str.splitn(2, ':');
         if let Some(key) = parts.next() {
             let value = parts.next().unwrap_or("").trim();
-            // Intra-line deduplication: store the last value encountered for a key
             record.insert(key.trim().to_string(), value.to_string());
         }
     }
@@ -29,12 +28,8 @@ pub fn parse_line(line: &str) -> RawRecord {
 pub fn extract_emails(record: &RawRecord) -> Vec<String> {
     let mut found_emails = Vec::new();
     let mut seen_emails = HashSet::new();
-
-    // Sort keys for somewhat deterministic order when extracting.
-    // This helps in making the output more predictable if multiple fields contain emails.
     let mut keys: Vec<_> = record.keys().cloned().collect();
     keys.sort();
-
     for key in keys {
         if let Some(value) = record.get(&key) {
             for mat in EMAIL_REGEX.find_iter(value) {
@@ -45,9 +40,6 @@ pub fn extract_emails(record: &RawRecord) -> Vec<String> {
             }
         }
     }
-    // The order of emails in the output vec depends on the sorted keys and then discovery order within values.
-    // If a very specific order is critical (e.g., always email from 'email' key first),
-    // this function would need more complex logic. For now, it's unique emails in discovery order.
     found_emails
 }
 
