@@ -1,6 +1,5 @@
 use crate::models::{RawRecord, UserOutput};
- // Import the regex
-// HashMap import might have been removed by cargo fix, ensure it's here for tests.
+use crate::constants::EMAIL_REGEX;
 
 /// Chooses a primary identifier for a user record.
 /// Priority:
@@ -9,40 +8,31 @@ use crate::models::{RawRecord, UserOutput};
 /// 3. Value of "username" key (trimmed, lowercased).
 /// 4. Value of "login" key (trimmed, lowercased).
 pub fn choose_identifier(record: &RawRecord, emails: &[String]) -> Option<String> {
-    // 1. Prefer the first valid email found anywhere in the record
     if let Some(email) = emails.first() {
         return Some(email.clone());
     }
-
-    // 2. Fallback: try "identifier" field if present and non-empty
     if let Some(id_val) = record.get("identifier") {
         let trimmed = id_val.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
+        if !trimmed.is_empty() && EMAIL_REGEX.is_match(trimmed) {
+            return Some(trimmed.to_lowercase());
         }
     }
-
-    // 3. Fallback: try other common fields (e.g., "login-username", "user_login", "UserName", "email")
     for key in [
         "login-username", "user_login", "UserName", "email", "username", "login"
     ] {
         if let Some(val) = record.get(key) {
             let trimmed = val.trim();
             if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
+                return Some(trimmed.to_lowercase());
             }
         }
     }
-
-    // 4. Fallback: try any non-empty value
     for val in record.values() {
         let trimmed = val.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());
         }
     }
-
-    // 5. Nothing found
     None
 }
 
