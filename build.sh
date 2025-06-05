@@ -11,15 +11,56 @@ if [ -z "$PROJECT_NAME" ]; then
     exit 1
 fi
 
-echo "Starting release build for ${PROJECT_NAME}..."
+# Function to detect CPU count
+detect_threads() {
+    if command -v nproc >/dev/null 2>&1; then
+        nproc
+    elif [ -f /proc/cpuinfo ]; then
+        grep -c ^processor /proc/cpuinfo
+    elif command -v sysctl >/dev/null 2>&1; then
+        sysctl -n hw.ncpu 2>/dev/null || echo "4"
+    else
+        echo "4"  # fallback
+    fi
+}
 
-# Build the project in release mode.
-cargo build --release
+# Function to show usage
+show_usage() {
+    echo "Usage: $0"
+    echo ""
+    echo "Builds the autofill parser in release mode."
+    echo ""
+    echo "Examples:"
+    echo "  ./build.sh"
+    echo "  ./build.sh help"
+}
 
-echo "Build complete!"
-echo "Binary located at: target/release/${PROJECT_NAME}"
+# Parse arguments
+MODE=${1:-build}
 
-# Copy the binary to the project root
-echo "Copying target/release/${PROJECT_NAME} to ./${PROJECT_NAME}..."
-cp "target/release/${PROJECT_NAME}" "./${PROJECT_NAME}"
-echo "Binary ${PROJECT_NAME} is now available in the project root." 
+case "$MODE" in
+    "build"|"")
+        echo "Building release version..."
+        cargo build --release
+        cp "target/release/${PROJECT_NAME}" "./${PROJECT_NAME}"
+        echo "✅ Binary: ./${PROJECT_NAME}"
+        
+        THREADS=$(detect_threads)
+        echo "Usage: ./${PROJECT_NAME} -i input_dir -o output.ndjson -t ${THREADS}"
+        ;;
+    
+    "help"|"-h"|"--help")
+        show_usage
+        exit 0
+        ;;
+    
+    *)
+        echo "❌ Unknown option: $MODE"
+        echo ""
+        show_usage
+        exit 1
+        ;;
+esac
+
+echo ""
+echo "🚀 Build complete!"

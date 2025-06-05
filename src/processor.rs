@@ -1,12 +1,6 @@
 use crate::models::{RawRecord, UserOutput};
 use crate::constants::EMAIL_REGEX;
 
-/// Chooses a primary identifier for a user record.
-/// Priority:
-/// 1. Emails extracted by regex from any field value.
-/// 2. Value of "identifier" key if it's a valid email.
-/// 3. Value of "username" key (trimmed, lowercased).
-/// 4. Value of "login" key (trimmed, lowercased).
 pub fn choose_identifier(record: &RawRecord, emails: &[String]) -> Option<String> {
     if let Some(email) = emails.first() {
         return Some(email.clone());
@@ -17,13 +11,15 @@ pub fn choose_identifier(record: &RawRecord, emails: &[String]) -> Option<String
             return Some(trimmed.to_lowercase());
         }
     }
-    for key in [
-        "login-username", "user_login", "UserName", "email", "username", "login"
-    ] {
-        if let Some(val) = record.get(key) {
-            let trimmed = val.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_lowercase());
+    let username_patterns = ["email", "user", "login", "name"];
+    for pattern in username_patterns {
+        for (key, val) in record {
+            let key_lower = key.to_lowercase();
+            if key_lower.contains(pattern) {
+                let trimmed = val.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_lowercase());
+                }
             }
         }
     }
@@ -36,13 +32,9 @@ pub fn choose_identifier(record: &RawRecord, emails: &[String]) -> Option<String
     None
 }
 
-/// Merges a new record into an existing UserOutput record.
-/// New keys from `new_data_record` are added if not present in `base_user_output.other_fields`.
-/// The `identifier` and `emails` fields in `base_user_output` are not modified by this function.
 pub fn merge_records(base_user_output: &mut UserOutput, new_data_record: &RawRecord) {
     for (key, value) in new_data_record {
-        // Avoid overwriting special fields like 'identifier' or 'emails' if they somehow appear in new_data_record keys
-        // and ensure we only add to other_fields.
+        // ensure we only add to other_fields
         if key != "identifier" && key != "emails" { 
             base_user_output.other_fields.entry(key.clone()).or_insert_with(|| value.clone());
         }
@@ -183,7 +175,7 @@ mod tests {
         expected_fields.insert("key1".to_string(), "value1_base".to_string());
         expected_fields.insert("key2".to_string(), "value2_new".to_string());
         assert_eq!(base.other_fields, expected_fields);
-        assert_eq!(base.identifier, "id@example.com".to_string()); 
+        assert_eq!(base.identifier, "id@example.com".to_string());
         assert_eq!(base.emails, vec!["id@example.com".to_string()]); 
     }
 
@@ -303,5 +295,38 @@ mod tests {
         record.insert("identifier2".to_string(), "shreyac.office0898".to_string());
         let emails = vec!["niral.shah.1656@gmail.com".to_string()];
         assert_eq!(choose_identifier(&record, &emails), Some("niral.shah.1656@gmail.com".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_case_insensitive_matching() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("USERNAME".to_string(), "UpperCaseKey".to_string());
+        let emails = Vec::new();
+        assert_eq!(choose_identifier(&record, &emails), Some("uppercasekey".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_substring_patterns() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("user_login_name".to_string(), "SubstringMatch".to_string());
+        let emails = Vec::new();
+        assert_eq!(choose_identifier(&record, &emails), Some("substringmatch".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_pattern_priority() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("user_name".to_string(), "UserName".to_string());
+        record.insert("email_address".to_string(), "EmailAddress".to_string());
+        let emails = Vec::new();
+        assert_eq!(choose_identifier(&record, &emails), Some("emailaddress".to_string()));
+    }
+
+    #[test]
+    fn test_choose_identifier_special_chars_in_keys() {
+        let mut record: RawRecord = HashMap::new();
+        record.insert("login-user.name_field".to_string(), "SpecialChars".to_string());
+        let emails = Vec::new();
+        assert_eq!(choose_identifier(&record, &emails), Some("specialchars".to_string()));
     }
 } 

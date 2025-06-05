@@ -1,4 +1,17 @@
 {
     "memory_usage_percent": 50,
-    "temp_directory": "./temp"
-} 
+    "temp_directory": "./temp",
+    "progress_update_frequency": 1000000,
+    "max_records_before_swap": 500000,
+    "memory_check_interval_secs": 5,
+    "record_check_interval": 50000,
+    "hashmap_initial_capacity": 500000,
+    "safety_records_limit": 250000,
+    "memory_pressure_threshold_gb": 12.0,
+    "chunk_size_multiplier": 32,
+    "small_dataset_threshold_gb": 1.0,
+    "large_dataset_threshold_gb": 10.0,
+    "emergency_abort_threshold_gb": 0.5,
+    "max_file_size_bytes": 100000000,
+    "single_threaded_threshold_gb": 30.0
+}
