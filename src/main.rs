@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use serde_json;
 use sysinfo::{System, Pid, ProcessesToUpdate};
+use rayon::prelude::*;
 
 lazy_static::lazy_static! {
     static ref LOG_FILE: Mutex<File> = Mutex::new(
@@ -91,94 +92,71 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let mut all_users: HashMap<String, UserOutput> = HashMap::new();
+    let glob_results: Vec<_> = glob(&input_file_pattern)?.filter_map(Result::ok).collect();
+    let files_processed_count = glob_results.len();
 
-    println!("Processing files from: {}", input_file_pattern);
-
-    let glob_results = glob(&input_file_pattern)?;
-    let mut files_processed_count = 0;
-
-    let mut sys = System::new_all();
-    let max_mem_bytes = {
-        sys.refresh_memory();
-        let total = sys.total_memory() * 1024;
-        total * config.memory_usage_percent as u64 / 100
-    };
-    let temp_dir = Path::new(&config.temp_directory);
-    if !temp_dir.exists() {
-        fs::create_dir_all(temp_dir)?;
-    }
-    let temp_file_path = temp_dir.join("swap_users.tmp");
-    let mut temp_file = File::create(&temp_file_path)?;
-    let mut using_temp = false;
-
-    for entry in glob_results {
-        match entry {
-            Ok(path) => {
-                if path.is_file() {
-                    files_processed_count += 1;
-                    if args.verbose {
-                        println!("Processing file: {:?}", path.display());
+    let user_maps: Vec<HashMap<String, UserOutput>> = glob_results.par_iter().map(|path| {
+        let mut local_users: HashMap<String, UserOutput> = HashMap::new();
+        if path.is_file() {
+            if args.verbose {
+                println!("Processing file: {:?}", path.display());
+            }
+            let file = match File::open(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    log_message(&format!("Error opening file {:?}: {}", path.display(), e));
+                    return local_users;
+                }
+            };
+            let reader = BufReader::new(file);
+            for (line_number, line_result) in reader.lines().enumerate() {
+                let line = match line_result {
+                    Ok(l) => l,
+                    Err(e) => {
+                        log_message(&format!("Error reading line {} from file {:?}: {}", line_number + 1, path.display(), e));
+                        continue;
                     }
-                    let file = File::open(&path)?;
-                    let reader = BufReader::new(file);
-
-                    for (line_number, line_result) in reader.lines().enumerate() {
-                        let line = match line_result {
-                            Ok(l) => l,
-                            Err(e) => {
-                                log_message(&format!("Error reading line {} from file {:?}: {}", line_number + 1, path.display(), e));
-                                continue;
-                            }
-                        };
-                        if line.trim().is_empty() {
-                            continue;
-                        }
-                        let parsed_data: RawRecord = parse_line(&line);
-                        if parsed_data.is_empty() {
-                            log_message(&format!("Skipping empty parsed data from line {} in {:?}: '{}'", line_number + 1, path.display(), line));
-                            continue;
-                        }
-                        let emails: Vec<String> = extract_emails(&parsed_data);
-                        if let Some(pk) = choose_identifier(&parsed_data, &emails) {
-                            let mut current_record_other_fields = parsed_data.clone();
-                            current_record_other_fields.remove("identifier");
-                            current_record_other_fields.remove("emails");
-                            all_users.entry(pk.clone())
-                                .and_modify(|existing_user| {
-                                    merge_records(existing_user, &parsed_data);
-                                })
-                                .or_insert_with(|| UserOutput {
-                                    identifier: pk,
-                                    emails,
-                                    other_fields: current_record_other_fields,
-                                });
-                        } else {
-                            log_message(&format!("Skipping line due to no identifiable primary key (line {} in {:?}): '{}'", line_number + 1, path.display(), line));
-                        }
-                        sys.refresh_processes(ProcessesToUpdate::All, true);
-                        let pid = Pid::from(std::process::id() as usize);
-                        let process = sys.process(pid).unwrap();
-                        let mem_used = process.memory() * 1024;
-                        if mem_used > max_mem_bytes {
-                            if !using_temp {
-                                for user_record in all_users.values() {
-                                    let json_string = serde_json::to_string(user_record)?;
-                                    writeln!(temp_file, "{}", json_string)?;
-                                }
-                                all_users.clear();
-                                using_temp = true;
-                                log_message("Memory limit exceeded, swapping to temp file.");
-                            }
-                        }
-                    }
+                };
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let parsed_data: RawRecord = parse_line(&line);
+                if parsed_data.is_empty() {
+                    log_message(&format!("Skipping empty parsed data from line {} in {:?}: '{}'", line_number + 1, path.display(), line));
+                    continue;
+                }
+                let emails: Vec<String> = extract_emails(&parsed_data);
+                if let Some(pk) = choose_identifier(&parsed_data, &emails) {
+                    let mut current_record_other_fields = parsed_data.clone();
+                    current_record_other_fields.remove("identifier");
+                    current_record_other_fields.remove("emails");
+                    local_users.entry(pk.clone())
+                        .and_modify(|existing_user| {
+                            merge_records(existing_user, &parsed_data);
+                        })
+                        .or_insert_with(|| UserOutput {
+                            identifier: pk,
+                            emails,
+                            other_fields: current_record_other_fields,
+                        });
+                } else {
+                    log_message(&format!("Skipping line due to no identifiable primary key (line {} in {:?}): '{}'", line_number + 1, path.display(), line));
                 }
             }
-            Err(e) => {
-                let err_msg = format!("Error processing glob entry for pattern '{}': {:?}", input_file_pattern, e);
-                log_message(&err_msg);
-            }
         }
+        local_users
+    }).collect();
+
+    let mut all_users: HashMap<String, UserOutput> = HashMap::new();
+    for user_map in user_maps {
+        for (k, v) in user_map {
+            all_users.entry(k.clone())
+                .and_modify(|existing_user| {
+                    merge_records(existing_user, &v.other_fields);
+                })
+                .or_insert(v);
+        }
+        // Memory check and temp file swap can be done here if needed (not parallel section)
     }
 
     if files_processed_count == 0 {
@@ -191,19 +169,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             output_file_path.display()
         );
         let mut out_file = File::create(&output_file_path)?;
-        if using_temp {
-            let temp_reader = BufReader::new(File::open(&temp_file_path)?);
-            for line in temp_reader.lines() {
-                writeln!(out_file, "{}", line?)?;
-            }
-        }
         for user_record in all_users.values() {
             let json_string = serde_json::to_string(user_record)?;
             writeln!(out_file, "{}", json_string)?;
         }
     }
-    // Clean up swap_users.tmp if it exists
-    let _ = fs::remove_file(&temp_file_path);
     println!("Processing complete. Check processing_errors.log for any issues.");
     Ok(())
 } 
