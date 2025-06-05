@@ -75,7 +75,7 @@ There's also `make run-verbose`.
 
 This parser is designed for high performance and can handle extremely large datasets:
 
-*   **Speed**: Processes 55,000+ users per second on modern hardware
+*   **Speed**: Processes 55,000+ records per second on modern hardware
 *   **Memory Safety**: Configurable memory limits prevent OOM crashes
 *   **File Size**: Handles files from KB to multi-GB without skipping
 *   **Parallelism**: Automatic thread pool sizing based on CPU cores
