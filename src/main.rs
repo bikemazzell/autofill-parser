@@ -662,9 +662,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("\nProcessing complete!");
     println!("Total time: {:.2}s", elapsed);
     println!("Files processed: {}", total_files);
-    println!("Total unique records: {}", total_users);
-    println!("Performance: {:.0} files/sec, {:.0} rec/sec",
-        total_files as f64 / elapsed,
+    println!("Total unique users: {}", total_users);
+    println!("Performance: {:.0} users/sec",
         total_users as f64 / elapsed
     );
 
